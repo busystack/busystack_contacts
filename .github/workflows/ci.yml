@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Materialize pinned sibling packages
+        run: python3 tool/checkout_shared_dependencies.py
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.4
+      - name: Resolve locked dependencies
+        run: dart pub get --enforce-lockfile
+      - name: Verify source and public API example
+        run: |
+          dart format --output=none --set-exit-if-changed .
+          dart analyze
+          dart test
+          dart run example/main.dart

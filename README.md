@@ -1,0 +1,25 @@
+# busystack_contacts
+
+An independent, pure Dart contacts subsystem. Public common API is `busystack_contacts.dart`; provider-specific libraries are `google.dart`, `microsoft.dart` and `carddav.dart`. The Google library exports selected generated People types. This package has no Flutter, Riverpod, native credential store or application imports.
+
+Use `ContactsDirectory` with an explicit application-owned `ContactsStore`, then bind account-scoped providers. Providers receive authorized callbacks/transports; this package does not implement login. Google uses googleapis 17's generated People client. Microsoft uses busystack_graph. CardDAV uses busystack_dav. Nextcloud is a connection setup for the same CardDAV provider.
+
+`ContactIdentity` is qualified by account/provider/source/remote ID. `ContactProjection` is a browsing/recipient projection, never a replacement document. `GoogleContactRecord`, `MicrosoftContactRecord` and `CardDavContactRecord` retain complete native data and revisions. Common `ContactPatch` fields use `FieldEdit.unchanged`, `.set` and `.clear`; repeated values retain native identities and unknown subproperties. Provider-specific `GoogleGroupAction`, `GoogleFieldsAction`, `MicrosoftFolderAction`, `MicrosoftFieldsAction` and `CardDavAddressBookAction` pass through `directory.providerAction`, the same account serialization, journal and reconciliation path as common edits.
+
+Google contact groups, Microsoft folders/categories and DAV address books remain distinct concepts. Source permissions and cardinality are validated before writing. Non-contact-owned Google fields remain readable and read only. Google uses CONTACT-source ETags and intended update masks. Microsoft PATCH uses intended fields, whole structured postal properties and consistent immutable IDs. A changeKey preflight detects observed changes; there is no claimed atomic If-Match guarantee for the contacts endpoint. CardDAV full replacement requires a complete card, UID and conditional ETag. vCard 3 and advertised vCard 4, Unicode/folding, repeated/structured values, unknown lines/parameters/groups and bounded photos are supported. Common name, organization and notes edits affect the displayed primary values and preserve alternate native values. Clearing a primary note with preserved variants keeps an empty primary slot; a sole note is removed. Cross-provider import previews warn about additional names/notes that the destination cannot represent.
+
+Synchronization commits native records, browse/search projections and the corresponding per-source cursor atomically. Interrupted full scans retain unseen cached records. Expired cursors trigger a safe rebuild. Pending and newly confirmed local writes are protected from delayed Google echoes. Mutations persist as queued/executing/confirmed/failed/unknown/conflict. Restart converts interrupted dispatched work into an unknown outcome; it does not invent remote success. Unknown creates are never blindly replayed: Google/CardDAV use positive marker/resource reconciliation; Microsoft requires an explicit selected remote match. Conflicts retain base/local/remote; rebasing applies only the selected fields. An account disconnect fences stale completions and affects that account only.
+
+The persistence transaction callback and every transaction operation are awaited, atomic and must not escape their scope. Implementations preserve isolation across asynchronous gaps, roll back failures and emit change notifications only after commit. `projections` may return lightweight list/search data; details/editing must load the full `contact` record. BusyCards' SQLCipher adapter is a durable production implementation. The test-only transaction store is not used by the application. Apps own database/key protection, scheduling and lifecycle; no shared physical store is required.
+
+Read retries are bounded and owned by the directory; transports do not multiply them. Account serialization and a three-account concurrency bound are independent from UI frames. Large JSON/vCard parsing uses isolates. Photos are lazy, bounded to 2 MiB and use public HTTPS downloads without forwarding account tokens to photo hosts.
+
+```
+dart pub get --enforce-lockfile
+dart format --output=none --set-exit-if-changed lib test example
+dart analyze
+dart test
+dart run example/main.dart
+```
+
+Requires Dart 3.13.4. Local dependencies are exactly `../busystack_dav` and `../busystack_graph`. The four-target source archive recreates that layout. A publishable release replaces those two paths with exact hosted versions of the same packages after owner authorization; no publication occurred. See BusyCards' provider references and delivery report for supported endpoint limitations, fixtures, durable-store measurements and unavailable live/native gates. Apache-2.0.

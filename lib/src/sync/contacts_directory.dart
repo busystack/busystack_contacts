@@ -105,43 +105,72 @@ final class ContactsDirectory {
     int limit = 8,
   }) async {
     if (limit < 1 || limit > 100) throw RangeError.value(limit);
-    final grouped = <String, ContactRecipient>{};
-    final excluded = excludedAddresses
-        .map((value) => value.toLowerCase())
-        .toSet();
-    for (final account in accountIds) {
-      final selectedSources = sourceKeys.isEmpty
-          ? <String?>[null]
-          : (await store.read((tx) async => tx.sources(accountId: account)))
-                .where((source) => sourceKeys.contains(source.key))
-                .map<String?>((source) => source.key)
-                .toList();
-      for (final source in selectedSources) {
-        final records = await browse(
-          query,
-          accountId: account,
-          sourceKey: source,
-          limit: 100,
-        );
-        for (final record in records) {
-          for (final email in record.emails) {
-            final key = email.value.toLowerCase();
-            if (excluded.contains(key)) continue;
-            if (query.isNotEmpty &&
-                !record.searchText.contains(query.toLowerCase())) {
-              continue;
-            }
-            final old = grouped[key];
-            grouped[key] = ContactRecipient(
-              old?.name ?? record.displayName,
-              email.value,
-              [...?old?.identities, record.identity],
+    return store.read((tx) async {
+      const pageSize = 100;
+      final grouped = <String, ContactRecipient>{};
+      final seen = <ContactIdentity>{};
+      final needle = query.toLowerCase();
+      final excluded = excludedAddresses
+          .map((value) => value.trim().toLowerCase())
+          .toSet();
+      for (final account in accountIds) {
+        final selectedSources = sourceKeys.isEmpty
+            ? <String?>[null]
+            : (await tx.sources(accountId: account))
+                  .where((source) => sourceKeys.contains(source.key))
+                  .map<String?>((source) => source.key)
+                  .toList();
+        for (final source in selectedSources) {
+          var offset = 0;
+          int? matchingCount;
+          while (true) {
+            final records = await tx.projections(
+              query: query,
+              accountId: account,
+              sourceKey: source,
+              limit: pageSize,
+              offset: offset,
             );
+            for (final record in records) {
+              if (!seen.add(record.identity) ||
+                  !record.searchText.contains(needle)) {
+                continue;
+              }
+              for (final email in record.emails) {
+                final address = email.value.trim();
+                final key = address.toLowerCase();
+                if (key.isEmpty || excluded.contains(key)) continue;
+                final old = grouped[key];
+                if (old == null && grouped.length == limit) continue;
+                grouped[key] = ContactRecipient(
+                  old?.name ?? record.displayName,
+                  address,
+                  [
+                    ...?old?.identities,
+                    if (old == null ||
+                        !old.identities.contains(record.identity))
+                      record.identity,
+                  ],
+                );
+              }
+            }
+            // Finish the fetched page to retain aliases without another read.
+            if (grouped.length == limit) return grouped.values.toList();
+            if (records.length < pageSize) break;
+            offset += records.length;
+            // Count only when another page is needed. The same read transaction
+            // provides a finite snapshot bound even if a store repeats rows.
+            matchingCount ??= await tx.count(
+              query: query,
+              accountId: account,
+              sourceKey: source,
+            );
+            if (offset >= matchingCount) break;
           }
         }
       }
-    }
-    return grouped.values.take(limit).toList();
+      return grouped.values.toList();
+    });
   }
 
   Future<List<ContactSource>> discover(String accountId) => _serial(accountId, (

@@ -12,6 +12,8 @@ Synchronization commits native records, browse/search projections and the corres
 
 The persistence transaction callback and every transaction operation are awaited, atomic and must not escape their scope. Implementations preserve isolation across asynchronous gaps, roll back failures and emit change notifications only after commit. `projections` may return lightweight list/search data; details/editing must load the full `contact` record. BusyCards' SQLCipher adapter is a durable production implementation. The test-only transaction store is not used by the application. Apps own database/key protection, scheduling and lifecycle; no shared physical store is required.
 
+Recipient suggestions page through cached matching projections in one read transaction until the requested number of distinct, non-excluded addresses is available or the selected sources are exhausted. Empty addresses do not count. Results retain account/source/page order and group matching identities by case-insensitive email within the pages read. A full page is processed to retain aliases; no further page is requested once the limit is satisfied. The matching count bounds pagination in the same snapshot, including stores that repeat rows.
+
 Read retries are bounded and owned by the directory; transports do not multiply them. Account serialization and a three-account concurrency bound are independent from UI frames. Large JSON/vCard parsing uses isolates. Photos are lazy, bounded to 2 MiB and use public HTTPS downloads without forwarding account tokens to photo hosts.
 
 ```
@@ -22,4 +24,4 @@ dart test
 dart run example/main.dart
 ```
 
-Requires Dart 3.13.4. Local dependencies are exactly `../busystack_dav` and `../busystack_graph`. The four-target source archive recreates that layout. A publishable release replaces those two paths with exact hosted versions of the same packages after owner authorization; no publication occurred. See BusyCards' provider references and delivery report for supported endpoint limitations, fixtures, durable-store measurements and unavailable live/native gates. Apache-2.0.
+Requires Dart 3.13.4. `main` is the authoritative development branch at `https://github.com/busystack/busystack_contacts.git`. Consumers use sibling path dependencies and pin an exact tested commit from `main` in `tool/shared_dependencies.json`; run their `tool/checkout_shared_dependencies.py` before dependency resolution. Local dependencies are exactly `../busystack_dav` and `../busystack_graph`; this package's manifest pins their unchanged source trees at their current `main` commits. The four-target source archive recreates that layout. A publishable release replaces those two paths with exact hosted versions of the same packages after owner authorization; no publication occurred. See BusyCards' provider references and delivery report for supported endpoint limitations, fixtures, durable-store measurements and unavailable live/native gates. Apache-2.0.
